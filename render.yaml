@@ -3,15 +3,17 @@ services:
     name: panchangbodh-api
     env: python
     buildCommand: |
-      # Download ephemeris files to current dir (where main.py is)
-      curl -O https://www.astro.com/ftp/swisseph/ephe/seas_18.se1
-      curl -O https://www.astro.com/ftp/swisseph/ephe/sepl_18.se1
+      mkdir -p ephe
+      cd ephe
       curl -O https://www.astro.com/ftp/swisseph/ephe/seas_00.se1
       curl -O https://www.astro.com/ftp/swisseph/ephe/seas_06.se1
+      curl -O https://www.astro.com/ftp/swisseph/ephe/seas_18.se1
       curl -O https://www.astro.com/ftp/swisseph/ephe/seas_102.se1
       curl -O https://www.astro.com/ftp/swisseph/ephe/seas_108.se1
       curl -O https://www.astro.com/ftp/swisseph/ephe/sepl_06.se1
+      curl -O https://www.astro.com/ftp/swisseph/ephe/sepl_18.se1
       curl -O https://www.astro.com/ftp/swisseph/ephe/sepl_102.se1
       curl -O https://www.astro.com/ftp/swisseph/ephe/sepl_108.se1
+      cd ..
       pip install -r requirements.txt
     startCommand: uvicorn main:app --host=0.0.0.0 --port=10000
