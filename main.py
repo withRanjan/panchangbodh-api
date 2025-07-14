@@ -20,7 +20,6 @@ app.add_middleware(
 )
 
 # ----------- City Coordinates Lookup -----------
-# Add more cities as needed. Case-insensitive match.
 CITY_COORDS = {
     "delhi": (28.6139, 77.2090),
     "mumbai": (19.0760, 72.8777),
@@ -127,14 +126,16 @@ async def panchang(
         # --- Calculate sunrise & sunset ---
         sunrise, sunset = calculate_sun_times(lat, lon, dt.year, dt.month, dt.day)
 
+        # --- Calculate Rahu Kaal only if sun times are valid ---
+        if sunrise == "N/A" or sunset == "N/A":
+            rahu_start, rahu_end = "N/A", "N/A"
+        else:
+            rahu_start, rahu_end = get_rahu_kaal(dt.weekday(), sunrise, sunset)
+
         # --- Calculate tithi, paksha, nakshatra ---
         tithi, paksha = get_tithi(jd)
         nakshatra = get_nakshatra(jd)
         weekday = dt.strftime("%A")
-        weekday_num = dt.weekday()  # 0=Monday
-
-        # --- Calculate Rahu Kaal ---
-        rahu_start, rahu_end = get_rahu_kaal(weekday_num, sunrise, sunset)
 
         # --- Compose Panchang Dictionary ---
         panchang = {
