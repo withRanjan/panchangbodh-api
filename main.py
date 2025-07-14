@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import datetime
 import swisseph as swe
 
+# Set ephemeris path to repo root (where .se1 files are uploaded)
+swe.set_ephe_path(".")
+
 # ----------- FastAPI App Setup -----------
 app = FastAPI(
     title="PanchangBodh API",
