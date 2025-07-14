@@ -2,27 +2,25 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 import datetime
 import swisseph as swe
+import os
 
-# Set ephemeris path to repo root (where .se1 files are uploaded)
-swe.set_ephe_path(".")
+# Set ephemeris path to 'ephe' subdirectory with absolute path
+swe.set_ephe_path(os.path.abspath("ephe"))
 
-# ----------- FastAPI App Setup -----------
 app = FastAPI(
     title="PanchangBodh API",
     description="Dynamic Daily Panchang API for any date/city. Powered by Swiss Ephemeris.",
     version="1.0.0"
 )
 
-# Enable CORS for all domains (you can restrict for production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ----------- City Coordinates Lookup -----------
 CITY_COORDS = {
     "delhi": (28.6139, 77.2090),
     "mumbai": (19.0760, 72.8777),
@@ -32,13 +30,9 @@ CITY_COORDS = {
     "hyderabad": (17.3850, 78.4867),
     "pune": (18.5204, 73.8567)
 }
-
 DEFAULT_CITY = "delhi"
 
-# ----------- Utility Functions -----------
-
 def format_time_from_float(t):
-    """Convert float hour (e.g. 5.5) to HH:MM AM/PM."""
     hour = int(t)
     minute = int(round((t - hour) * 60))
     ampm = "AM" if hour < 12 or hour == 24 else "PM"
@@ -47,7 +41,6 @@ def format_time_from_float(t):
     return f"{hour12:02}:{minute:02} {ampm}"
 
 def calculate_sun_times(lat, lon, year, month, day, timezone=5.5):
-    """Calculate local sunrise and sunset using Swiss Ephemeris."""
     jd = swe.julday(year, month, day)
     try:
         sunrise_ut = swe.rise_trans(jd, swe.SUN, lon, lat, rsmi=swe.CALC_RISE | swe.BIT_DISC_CENTER)[1][0]
@@ -63,7 +56,6 @@ def calculate_sun_times(lat, lon, year, month, day, timezone=5.5):
     return format_time_from_float(sunrise), format_time_from_float(sunset)
 
 def get_tithi(jd):
-    """Calculate tithi and paksha from Julian day."""
     sun_long = swe.calc_ut(jd, swe.SUN)[0][0]
     moon_long = swe.calc_ut(jd, swe.MOON)[0][0]
     tithi_num = int(((moon_long - sun_long) % 360) / 12) + 1
@@ -77,7 +69,6 @@ def get_tithi(jd):
     return tithi_name, paksha
 
 def get_nakshatra(jd):
-    """Calculate nakshatra for given Julian day."""
     moon_long = swe.calc_ut(jd, swe.MOON)[0][0]
     nak_num = int(moon_long / (360/27)) + 1
     nak_names = [
@@ -91,7 +82,6 @@ def get_nakshatra(jd):
     return nakshatra_name
 
 def get_rahu_kaal(weekday, sunrise, sunset):
-    """Calculate Rahu Kaal time window for given weekday."""
     rahu_sequence = [7, 1, 6, 4, 5, 3, 2]  # Mon to Sun (0=Mon)
     start_index = rahu_sequence[weekday]
     def time_to_float(t):
@@ -107,40 +97,26 @@ def get_rahu_kaal(weekday, sunrise, sunset):
     rahu_end = rahu_start + (day_length / 8)
     return format_time_from_float(rahu_start), format_time_from_float(rahu_end)
 
-# ----------- Panchang API Route -----------
-
 @app.get("/api/panchang")
 async def panchang(
-    city: str = Query(DEFAULT_CITY), 
-    date: str = Query("2025-07-15"), 
+    city: str = Query(DEFAULT_CITY),
+    date: str = Query("2025-07-15"),
     lang: str = Query("en")
 ):
-    """Dynamic Panchang API: Returns tithi, nakshatra, sunrise, sunset, rahu kaal etc. for date and city."""
     try:
-        # --- Case-insensitive city lookup, fallback to Delhi
         city_clean = city.strip().lower()
         lat, lon = CITY_COORDS.get(city_clean, CITY_COORDS[DEFAULT_CITY])
         city_name = city_clean.title() if city_clean in CITY_COORDS else DEFAULT_CITY.title()
-
-        # --- Parse date and get Julian day ---
         dt = datetime.datetime.strptime(date, "%Y-%m-%d")
         jd = swe.julday(dt.year, dt.month, dt.day)
-
-        # --- Calculate sunrise & sunset ---
         sunrise, sunset = calculate_sun_times(lat, lon, dt.year, dt.month, dt.day)
-
-        # --- Calculate Rahu Kaal only if sun times are valid ---
         if sunrise == "N/A" or sunset == "N/A":
             rahu_start, rahu_end = "N/A", "N/A"
         else:
             rahu_start, rahu_end = get_rahu_kaal(dt.weekday(), sunrise, sunset)
-
-        # --- Calculate tithi, paksha, nakshatra ---
         tithi, paksha = get_tithi(jd)
         nakshatra = get_nakshatra(jd)
         weekday = dt.strftime("%A")
-
-        # --- Compose Panchang Dictionary ---
         panchang = {
             "city": city_name,
             "date": date,
@@ -156,9 +132,28 @@ async def panchang(
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@app.get("/api/debug/files")
+def list_ephe_files():
+    # List .se1 files in ephe directory and show absolute path for debug
+    ephe_path = os.path.abspath("ephe")
+    try:
+        files = [f for f in os.listdir(ephe_path) if f.endswith(".se1")]
+    except Exception as ex:
+        return {"error": str(ex), "cwd": os.getcwd(), "ephe_path": ephe_path}
+    return {"se1_files": files, "cwd": os.getcwd(), "ephe_path": ephe_path}
+
+@app.on_event("startup")
+def print_ephe_debug():
+    ephe_path = os.path.abspath("ephe")
+    print(f"Startup: Swiss Ephemeris path set to: {ephe_path}")
+    print(f"Startup: CWD is: {os.getcwd()}")
+    try:
+        print(f"Startup: .se1 files: {os.listdir(ephe_path)}")
+    except Exception as ex:
+        print(f"Startup: Could not list .se1 files: {ex}")
+
 @app.get("/")
 def root():
-    """Health check and API usage example."""
     return {
         "msg": "PanchangBodh API is running!",
         "usage": "Call /api/panchang?city=delhi&date=2025-07-15"
